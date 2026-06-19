@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Monitoring — Message Center</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; }
+    header { background: #1a73e8; color: white; padding: 16px 24px; }
+    header h1 { font-size: 20px; }
+    .container { max-width: 900px; margin: 24px auto; padding: 0 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .card { background: white; border-radius: 10px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+    .card h2 { font-size: 16px; margin-bottom: 16px; color: #1a73e8; }
+    label { display: block; font-size: 13px; color: #555; margin-bottom: 4px; margin-top: 12px; }
+    select, input, textarea {
+      width: 100%; padding: 10px; border: 1px solid #ddd;
+      border-radius: 6px; font-size: 14px; outline: none;
+    }
+    select:focus, input:focus, textarea:focus { border-color: #1a73e8; }
+    textarea { resize: vertical; min-height: 90px; }
+    .btn { width: 100%; margin-top: 16px; padding: 11px; background: #1a73e8;
+           color: white; border: none; border-radius: 6px; font-size: 14px;
+           cursor: pointer; font-weight: 600; }
+    .btn:hover { background: #1558b0; }
+    .btn.danger { background: #e53935; }
+    .btn.danger:hover { background: #b71c1c; }
+    .status { margin-top: 10px; font-size: 13px; min-height: 20px; font-weight: 600; }
+    .status.ok { color: #2e7d32; }
+    .status.err { color: #c62828; }
+    .member-list { max-height: 320px; overflow-y: auto; }
+    .member-item { display: flex; justify-content: space-between; align-items: center;
+                   padding: 8px 0; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+    .member-item:last-child { border-bottom: none; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 12px;
+             font-size: 11px; font-weight: 600; text-transform: uppercase; }
+    .badge.student { background: #e3f2fd; color: #1565c0; }
+    .badge.parent  { background: #e8f5e9; color: #2e7d32; }
+    .badge.teacher { background: #fff3e0; color: #e65100; }
+    .del-btn { background: none; border: none; color: #e53935; cursor: pointer;
+               font-size: 16px; padding: 0 4px; }
+    @media(max-width: 600px) { .container { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<header><h1>Student Monitoring — Message Center</h1></header>
+<div class="container">
+
+  <!-- SEND MESSAGE -->
+  <div class="card">
+    <h2>Send WhatsApp Message</h2>
+    <label>Select group</label>
+    <select id="send-group">
+      <option value="student">Students</option>
+      <option value="parent">Parents</option>
+      <option value="teacher">Teachers</option>
+    </select>
+    <label>Message</label>
+    <textarea id="msg" placeholder="Type your message here..."></textarea>
+    <button class="btn" onclick="sendMsg()">Send via WhatsApp</button>
+    <div class="status" id="send-status"></div>
+  </div>
+
+  <!-- ADD MEMBER -->
+  <div class="card">
+    <h2>Add Member</h2>
+    <label>Full name</label>
+    <input id="add-name" placeholder="e.g. Ravi Kumar" />
+    <label>Phone (with country code)</label>
+    <input id="add-phone" placeholder="e.g. +919876543210" />
+    <label>Group</label>
+    <select id="add-group">
+      <option value="student">Student</option>
+      <option value="parent">Parent</option>
+      <option value="teacher">Teacher</option>
+    </select>
+    <button class="btn" onclick="addMember()">Add Member</button>
+    <div class="status" id="add-status"></div>
+  </div>
+
+  <!-- MEMBER LIST -->
+  <div class="card" style="grid-column: 1 / -1;">
+    <h2>All Members</h2>
+    <div class="member-list" id="member-list">Loading...</div>
+  </div>
+
+</div>
+
+<script>
+  async function loadMembers() {
+    const res = await fetch('/api/members');
+    const members = await res.json();
+    const el = document.getElementById('member-list');
+    if (!members.length) { el.innerHTML = '<p style="color:#999;font-size:13px">No members yet. Add one above.</p>'; return; }
+    el.innerHTML = members.map(m => `
+      <div class="member-item">
+        <span>${m.name}</span>
+        <span>${m.phone}</span>
+        <span class="badge ${m.group}">${m.group}</span>
+        <button class="del-btn" onclick="deleteMember(${m.id})" title="Remove">&#10005;</button>
+      </div>`).join('');
+  }
+
+  async function addMember() {
+    const name = document.getElementById('add-name').value.trim();
+    const phone = document.getElementById('add-phone').value.trim();
+    const group = document.getElementById('add-group').value;
+    const st = document.getElementById('add-status');
+    if (!name || !phone) { st.className = 'status err'; st.textContent = 'Fill in name and phone.'; return; }
+    const res = await fetch('/api/members', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name, phone, group})
+    });
+    const data = await res.json();
+    if (data.status === 'added') {
+      st.className = 'status ok'; st.textContent = 'Member added!';
+      document.getElementById('add-name').value = '';
+      document.getElementById('add-phone').value = '';
+      loadMembers();
+    } else {
+      st.className = 'status err'; st.textContent = data.error || 'Failed.';
+    }
+  }
+
+  async function deleteMember(id) {
+    await fetch(`/api/members/${id}`, {method:'DELETE'});
+    loadMembers();
+  }
+
+  async function sendMsg() {
+    const group = document.getElementById('send-group').value;
+    const message = document.getElementById('msg').value.trim();
+    const st = document.getElementById('send-status');
+    if (!message) { st.className = 'status err'; st.textContent = 'Please type a message.'; return; }
+    st.className = 'status'; st.textContent = 'Sending...';
+    const res = await fetch('/api/send', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({group, message})
+    });
+    const data = await res.json();
+    if (data.status === 'sent') {
+      st.className = 'status ok'; st.textContent = `Sent to ${data.count} member(s)!`;
+    } else {
+      st.className = 'status err'; st.textContent = data.error || 'Something went wrong.';
+    }
+  }
+
+  loadMembers();
+</script>
+</body>
+</html>
